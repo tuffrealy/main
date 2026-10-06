@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vault">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="https://i.ibb.co/W4XT2hgc/apple-touch-icon.png">
+<link rel="icon" href="https://i.ibb.co/GfkKpsQ0/icon-192.png">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Vault%22%2C%22short_name%22%3A%22Vault%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23ffffff%22%2C%22theme_color%22%3A%22%23ffffff%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A//i.ibb.co/GfkKpsQ0/icon-192.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image/png%22%7D%2C%7B%22src%22%3A%22https%3A//i.ibb.co/7Jgqk1SF/icon-512.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image/png%22%7D%5D%7D">
+<style>
+:root{--bg:#fff;--ink:#14171c;--mute:#6b7380;--line:#e6e9ee;--blue:#1f6fef;--red:#d92d20;--soft:#f4f6f9}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Helvetica,Arial,sans-serif;
+  touch-action:manipulation;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+header{padding:14px 20px 10px;display:flex;align-items:center;justify-content:space-between}
+h1{margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em}
+.count{color:var(--mute);font-size:14px}
+main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 20px 120px}
+.file{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.ico{width:40px;height:40px;border-radius:10px;background:var(--soft);display:grid;place-items:center;
+  font-size:11px;font-weight:700;color:var(--blue);flex:none;text-transform:uppercase}
+.meta{flex:1;min-width:0}
+.name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:13px;color:var(--mute)}
+button{font:inherit;border:0;background:none;color:var(--blue);font-weight:600;padding:10px 8px;border-radius:10px}
+button:active{background:var(--soft)}
+button.del{color:var(--red)}
+.empty{text-align:center;color:var(--mute);padding:80px 20px}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 20px calc(12px + env(safe-area-inset-bottom));
+  background:rgba(255,255,255,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+.up{width:100%;background:var(--blue);color:#fff;padding:15px;border-radius:14px;font-size:17px}
+.up:active{background:#1859c4}
+.prog{height:3px;background:var(--soft);border-radius:3px;overflow:hidden;margin-bottom:10px;display:none}
+.prog i{display:block;height:100%;width:0;background:var(--blue);transition:width .2s}
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 12px);transform:translate(-50%,-90px);
+  background:var(--ink);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;transition:transform .25s;max-width:90%}
+.toast.on{transform:translate(-50%,0)}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<header><h1>Vault</h1><span class="count" id="count"></span></header>
+<main id="list"></main>
+<div class="bar">
+  <div class="prog" id="prog"><i id="progbar"></i></div>
+  <button class="up" id="upbtn">Upload files</button>
+  <input type="file" id="pick" multiple>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* ====== EDIT THESE THREE ====== */
+const SUPABASE_URL = "https://pukvvjxtutvvdmoxvpvz.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1a3Z2anh0dXR2dmRtb3h2cHZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyOTgzMzMsImV4cCI6MjEwNjg3NDMzM30.J9HccNOKM7xGI__7ehOnJwAa2pDnwxWmkVUgICEaAYM";
+const BUCKET = "files";
+/* ============================== */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+
+// Block pinch zoom and double-tap zoom (iOS)
+["gesturestart","gesturechange","gestureend"].forEach(e =>
+  document.addEventListener(e, ev => ev.preventDefault()));
+let lastTouch = 0;
+document.addEventListener("touchend", ev => {
+  const now = Date.now();
+  if (now - lastTouch < 350) ev.preventDefault();
+  lastTouch = now;
+}, {passive:false});
+
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("on");
+  clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove("on"),2500)}
+const esc = s => s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function size(b){if(!b)return"";const u=["B","KB","MB","GB"];let i=0;while(b>=1024&&i<3){b/=1024;i++}return b.toFixed(i?1:0)+" "+u[i]}
+function when(d){return d?new Date(d).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}):""}
+
+async function load(){
+  const {data,error} = await sb.storage.from(BUCKET).list("",{limit:500,sortBy:{column:"created_at",order:"desc"}});
+  if(error){$("list").innerHTML='<div class="empty">Could not load files.<br>'+esc(error.message)+'</div>';return}
+  const files = data.filter(f=>f.name!==".emptyFolderPlaceholder");
+  $("count").textContent = files.length ? files.length+" files" : "";
+  if(!files.length){$("list").innerHTML='<div class="empty">No files yet.<br>Tap Upload files to add one.</div>';return}
+  $("list").innerHTML = files.map(f=>{
+    const ext=(f.name.split(".").pop()||"").slice(0,4);
+    return `<div class="file"><div class="ico">${esc(ext)}</div>
+      <div class="meta"><div class="name">${esc(f.name)}</div>
+      <div class="sub">${size(f.metadata&&f.metadata.size)} ${when(f.created_at)}</div></div>
+      <button data-dl="${esc(f.name)}">Download</button>
+      <button class="del" data-rm="${esc(f.name)}">Delete</button></div>`}).join("");
+}
+
+$("upbtn").onclick = () => $("pick").click();
+$("pick").onchange = async e => {
+  const files=[...e.target.files]; if(!files.length)return;
+  $("prog").style.display="block";
+  let done=0;
+  for(const f of files){
+    const path = Date.now()+"-"+f.name.replace(/[^\w.\-]+/g,"_");
+    const {error}=await sb.storage.from(BUCKET).upload(path,f,{contentType:f.type||undefined});
+    if(error) toast("Failed: "+error.message);
+    done++; $("progbar").style.width=(done/files.length*100)+"%";
+  }
+  setTimeout(()=>{$("prog").style.display="none";$("progbar").style.width="0"},400);
+  e.target.value=""; toast("Uploaded"); load();
+};
+
+$("list").onclick = async e => {
+  const dl=e.target.dataset.dl, rm=e.target.dataset.rm;
+  if(dl){
+    toast("Downloading…");
+    const {data,error}=await sb.storage.from(BUCKET).download(dl);
+    if(error)return toast(error.message);
+    const name=dl.replace(/^\d+-/,"");
+    const file=new File([data],name,{type:data.type});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      try{await navigator.share({files:[file]});return}catch(_){return}
+    }
+    const a=document.createElement("a");a.href=URL.createObjectURL(data);a.download=name;
+    document.body.appendChild(a);a.click();a.remove();
+  }
+  if(rm && confirm("Delete this file?")){
+    const {error}=await sb.storage.from(BUCKET).remove([rm]);
+    error?toast(error.message):(toast("Deleted"),load());
+  }
+};
+load();
+</script>
+</body>
+</html>
